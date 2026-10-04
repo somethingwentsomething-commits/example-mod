@@ -2,8 +2,11 @@
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/binding/PauseLayer.hpp>
+#include <Geode/ui/TextInput.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -25,6 +28,7 @@ static constexpr float ROW_W = 266.f;
 static constexpr float ROW_H = 38.f;
 static constexpr float ROW_Y0 = 50.f;
 static constexpr float ROW_GAP = 46.f;
+static constexpr float INPUT_OFFSET = ROW_W / 2.f - 52.f;
 
 static const ccColor3B C_BLACK  = {0, 0, 0};
 static const ccColor3B C_BG     = {24, 26, 41};
@@ -51,11 +55,19 @@ static const char* TAB_SUBS[TAB_COUNT] = {
     "Tune your Nova menu."
 };
 
-// Real cheats. tab = index into TAB_NAMES. Saved as "nova-<key>".
+// On/off cheats. tab = index into TAB_NAMES. Saved as "nova-<key>".
 struct Cheat { int tab; const char* key; const char* name; const char* desc; };
-static constexpr int CHEAT_COUNT = 1;
+static constexpr int CHEAT_COUNT = 2;
 static const Cheat CHEATS[CHEAT_COUNT] = {
-    {1, "noclip", "Noclip", "Survive hazards without dying"},
+    {1, "noclip",  "Noclip",        "Survive hazards without dying"},
+    {1, "respawn", "Respawn Delay", "Wait before respawning"},
+};
+
+// Typed number boxes. Saved as "nova-<key>".
+struct InputCfg { int tab; const char* key; const char* name; const char* desc; double def; };
+static constexpr int INPUT_COUNT = 1;
+static const InputCfg INPUTS[INPUT_COUNT] = {
+    {1, "respawn-delay", "Delay (seconds)", "0 = instant respawn", 1.0},
 };
 
 static CCDrawNode* shape(float w, float h, float radius, ccColor3B color, float alpha = 1.f) {
@@ -109,6 +121,8 @@ protected:
     CCNode* m_page = nullptr;
     CCNode* m_pill = nullptr;
     CCLayerColor* m_dim = nullptr;
+    TextInput* m_input = nullptr;
+    float m_inputY = 0.f;
     std::vector<CCLabelBMFont*> m_tabLabels;
     std::vector<ToggleRow> m_rows;
     int m_current = -1;
@@ -179,7 +193,7 @@ protected:
         closeX->setPosition({200.f, 116.f});
         m_root->addChild(closeX);
 
-        auto ver = chat("Nova v2.3", .5f, C_MUTED);
+        auto ver = chat("Nova v2.4", .5f, C_MUTED);
         ver->setAnchorPoint({1.f, .5f});
         ver->setOpacity(150);
         ver->setPosition({210.f, -127.f});
@@ -216,6 +230,10 @@ protected:
     }
 
     void buildPage(int index, bool animate) {
+        if (m_input) {
+            m_input->defocus();
+            m_input = nullptr;
+        }
         if (m_page) m_page->removeFromParentAndCleanup(true);
         m_rows.clear();
         m_page = CCNode::create();
@@ -240,6 +258,7 @@ protected:
         m_page->addChild(card);
 
         int count = 0;
+
         for (int c = 0; c < CHEAT_COUNT; ++c) {
             const Cheat& cheat = CHEATS[c];
             if (cheat.tab != index) continue;
@@ -279,6 +298,51 @@ protected:
             m_page->addChild(tg);
 
             m_rows.push_back({std::string(cheat.key), onTrack, knob, y, on});
+        }
+
+        for (int n = 0; n < INPUT_COUNT; ++n) {
+            const InputCfg& cfg = INPUTS[n];
+            if (cfg.tab != index) continue;
+
+            float y = ROW_Y0 - ROW_GAP * count;
+            ++count;
+
+            auto bg = shape(ROW_W, ROW_H, 11.f, C_ROW);
+            bg->setPosition({COL_X, y});
+            m_page->addChild(bg);
+
+            auto name = big(cfg.name, .42f, C_TEXT);
+            name->setAnchorPoint({0.f, .5f});
+            name->limitLabelWidth(120.f, .42f, .1f);
+            name->setPosition({COL_X - ROW_W / 2.f + 14.f, y + 7.f});
+            m_page->addChild(name);
+
+            auto desc = chat(cfg.desc, .5f, C_MUTED);
+            desc->setAnchorPoint({0.f, .5f});
+            desc->limitLabelWidth(120.f, .5f, .1f);
+            desc->setPosition({COL_X - ROW_W / 2.f + 14.f, y - 8.f});
+            m_page->addChild(desc);
+
+            double saved = Mod::get()->getSavedValue<double>(
+                std::string("nova-") + cfg.key, cfg.def);
+            char buf[24];
+            std::snprintf(buf, sizeof(buf), "%g", saved);
+
+            auto input = TextInput::create(70.f, "0", "bigFont.fnt");
+            input->setFilter("0123456789.");
+            input->setMaxCharCount(5);
+            input->setString(buf);
+            input->setCallback([key = std::string("nova-") + cfg.key](std::string const& s) {
+                double v = s.empty() ? 0.0 : std::strtod(s.c_str(), nullptr);
+                v = std::clamp(v, 0.0, 10.0);
+                Mod::get()->setSavedValue<double>(key, v);
+            });
+            input->setScale(.85f);
+            input->setPosition({COL_X + INPUT_OFFSET, y});
+            m_page->addChild(input);
+
+            m_input = input;
+            m_inputY = y;
         }
 
         if (count == 0) {
@@ -341,6 +405,7 @@ public:
     void onClose(CCObject*) {
         if (m_closing) return;
         m_closing = true;
+        if (m_input) m_input->defocus();
         this->setKeypadEnabled(false);
         this->setTouchEnabled(false);
         m_dim->runAction(CCFadeTo::create(.14f, 0));
@@ -364,6 +429,15 @@ public:
             this->onClose(nullptr);
             return true;
         }
+
+        // let taps on the typing box reach the text input
+        if (m_input &&
+            std::fabs(p.x - (COL_X + INPUT_OFFSET)) < 46.f &&
+            std::fabs(p.y - m_inputY) < 18.f) {
+            return false;
+        }
+        if (m_input) m_input->defocus();
+
         if (std::fabs(p.x - TAB_X) < TAB_W / 2.f + 4.f) {
             for (int i = 0; i < TAB_COUNT; ++i) {
                 if (std::fabs(p.y - (TAB_Y0 - TAB_GAP * i)) < TAB_GAP / 2.f) {
@@ -506,10 +580,32 @@ class $modify(NovaMenuLayer, MenuLayer) {
     }
 };
 
-// Noclip: when the game tries to kill the player, skip it.
+// Noclip + Respawn Delay
 class $modify(NovaPlayLayer, PlayLayer) {
     void destroyPlayer(PlayerObject* player, GameObject* obj) {
-        if (Mod::get()->getSavedValue<bool>("nova-noclip", false)) return;
+        auto mod = Mod::get();
+
+        // Noclip: skip the death completely
+        if (mod->getSavedValue<bool>("nova-noclip", false)) return;
+
         PlayLayer::destroyPlayer(player, obj);
+
+        // Respawn Delay: replace the game's 1 second wait with ours
+        if (!mod->getSavedValue<bool>("nova-respawn", false)) return;
+        bool dead = (m_player1 && m_player1->m_isDead) ||
+                    (m_player2 && m_player2->m_isDead);
+        if (!dead) return;
+
+        double d = mod->getSavedValue<double>("nova-respawn-delay", 1.0);
+        float delay = static_cast<float>(std::clamp(d, 0.0, 10.0));
+
+        this->stopActionByTag(16);
+        auto seq = CCSequence::create(
+            CCDelayTime::create(delay),
+            CCCallFunc::create(this, callfunc_selector(PlayLayer::delayedResetLevel)),
+            nullptr
+        );
+        seq->setTag(16);
+        this->runAction(seq);
     }
 };
