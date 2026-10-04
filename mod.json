@@ -1,17 +1,17 @@
 {
-	"geode": "$GEODE_VERSION",
-	"gd": {
-		"win": "2.2081",
-		"android": "2.2081",
-		"mac": "2.2081",
-		"ios": "2.2081"
-	},
-	"yourname.mymenu": "$MOD_ID",
-	"menulol": "$MOD_NAME",
-	"version": "$MOD_VERSION",
-	"TheFallar": "$MOD_DEVELOPER",
-	"description": "$MOD_DESCRIPTION",
-	"dependencies": {
-		"geode.node-ids": ">=v1.23.3"
-	}
+    "geode": "5.10.1",
+    "gd": {
+        "win": "2.2081",
+        "android": "2.2081",
+        "mac": "2.2081",
+        "ios": "2.2081"
+    },
+    "id": "nova.modmenu",
+    "name": "Nova Menu",
+    "version": "v1.0.0",
+    "developer": "Nova",
+    "description": "My first Geometry Dash mod menu",
+    "dependencies": {
+        "geode.node-ids": ">=v1.23.3"
+    }
 }
