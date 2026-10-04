@@ -326,7 +326,14 @@ class $modify(NovaMenuLayer, MenuLayer) {
         static bool created = false;
         if (!created) {
             created = true;
-            SceneManager::get()->keepAcrossScenes(NovaBubble::create());
+            
+            auto director = CCDirector::sharedDirector();
+            if (!director->getNotificationNode()) {
+                director->setNotificationNode(CCNode::create());
+            }
+            
+            // Adds your bubble to the notification node so it persists over all scenes
+            director->getNotificationNode()->addChild(NovaBubble::create(), 999);
         }
         return true;
     }
