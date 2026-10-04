@@ -20,60 +20,28 @@ static constexpr float TAB_Y0 = 70.f;
 static constexpr float TAB_GAP = 30.f;
 static constexpr float COL_X = 65.f;
 static constexpr float COL_W = 290.f;
-static constexpr float ROW_H = 36.f;
-static constexpr float ROW_Y0 = 58.f;
-static constexpr float ROW_GAP = 42.f;
 
 static const ccColor3B C_BLACK  = {0, 0, 0};
 static const ccColor3B C_BG     = {24, 26, 41};
 static const ccColor3B C_SIDE   = {18, 20, 33};
-static const ccColor3B C_ROW    = {35, 39, 62};
+static const ccColor3B C_CARD   = {30, 33, 53};
 static const ccColor3B C_LINE   = {52, 58, 92};
-static const ccColor3B C_OFF    = {62, 68, 104};
 static const ccColor3B C_TEXT   = {240, 242, 255};
 static const ccColor3B C_MUTED  = {140, 148, 186};
 static const ccColor3B C_ACCENT = {112, 126, 255};
 
-struct RowInfo { const char* key; const char* name; const char* desc; };
-struct TabInfo { const char* name; const char* sub; RowInfo rows[4]; };
+static const char* TAB_NAMES[TAB_COUNT] = {
+    "Overall", "Player", "Level", "Bypass", "Visual", "Creator", "Settings"
+};
 
-// Edit this table to rename tabs or toggles.
-static const TabInfo TABS[TAB_COUNT] = {
-    {"Overall", "Everyday options for the whole game.", {
-        {"ov-safe",  "Safe Mode",   "Blocks risky actions"},
-        {"ov-save",  "Auto Save",   "Keeps your settings"},
-        {"ov-fps",   "Show FPS",    "Small counter on screen"},
-        {"ov-quick", "Quick Restart", "Skip the wait"}}},
-    {"Player", "Movement and player options.", {
-        {"pl-noclip", "Noclip",      "Pass through hazards"},
-        {"pl-jump",   "Jump Hack",   "Jump any time"},
-        {"pl-hide",   "Hide Player", "Make the player invisible"},
-        {"pl-retry",  "Auto Retry",  "Respawn instantly"}}},
-    {"Level", "Level and practice tools.", {
-        {"lv-practice", "Practice Tools", "Extra practice options"},
-        {"lv-start",    "Start Position", "Begin from any spot"},
-        {"lv-attempts", "Hide Attempts",  "Clean up the screen"},
-        {"lv-info",     "Level Info",     "Show level details"}}},
-    {"Bypass", "Restrictions and limits.", {
-        {"by-icons",  "Unlock Icons", "Open the whole garage"},
-        {"by-limits", "Bypass Limits", "Lift common caps"},
-        {"by-cool",   "No Cooldown",  "Skip timers"},
-        {"by-shop",   "Free Shop",    "Shop without the cost"}}},
-    {"Visual", "Make the game look how you like.", {
-        {"vi-glow",  "No Glow",      "Remove object glow"},
-        {"vi-ui",    "Hide UI",      "Clean view while playing"},
-        {"vi-part",  "No Particles", "Less clutter"},
-        {"vi-trail", "Clean Trail",  "Simpler trails"}}},
-    {"Creator", "Editor helpers.", {
-        {"cr-scroll", "Free Scroll",   "Move around the editor"},
-        {"cr-copy",   "Copy Helper",   "Faster copy and paste"},
-        {"cr-obj",    "Extra Objects", "More object options"},
-        {"cr-zoom",   "Zoom Limit",    "Zoom further"}}},
-    {"Settings", "Tune your Nova menu.", {
-        {"st-sound", "Menu Sounds",  "Click sounds"},
-        {"st-glow",  "Bubble Glow",  "Soft ring on the bubble"},
-        {"st-small", "Compact Mode", "Smaller spacing"},
-        {"st-reset", "Confirm Reset", "Ask before resetting"}}}
+static const char* TAB_SUBS[TAB_COUNT] = {
+    "Everyday options for the whole game.",
+    "Movement and player options.",
+    "Level and practice tools.",
+    "Restrictions and limits.",
+    "Make the game look how you like.",
+    "Editor helpers.",
+    "Tune your Nova menu."
 };
 
 static CCDrawNode* shape(float w, float h, float radius, ccColor3B color, float alpha = 1.f) {
@@ -115,20 +83,11 @@ static CCLabelBMFont* chat(const char* t, float s, ccColor3B c) {
 
 class NovaMenu : public FLAlertLayer {
 protected:
-    struct ToggleRow {
-        std::string key;
-        CCNode* onTrack;
-        CCNode* knob;
-        float y;
-        bool on;
-    };
-
     CCNode* m_root = nullptr;
     CCNode* m_page = nullptr;
     CCNode* m_pill = nullptr;
     CCLayerColor* m_dim = nullptr;
     std::vector<CCLabelBMFont*> m_tabLabels;
-    std::vector<ToggleRow> m_rows;
     int m_current = -1;
     bool m_closing = false;
 
@@ -185,7 +144,7 @@ protected:
         m_root->addChild(m_pill);
 
         for (int i = 0; i < TAB_COUNT; ++i) {
-            auto l = big(TABS[i].name, .4f, C_MUTED);
+            auto l = big(TAB_NAMES[i], .4f, C_MUTED);
             l->setAnchorPoint({0.f, .5f});
             l->limitLabelWidth(70.f, .4f, .1f);
             l->setPosition({TAB_X - TAB_W / 2.f + 18.f, TAB_Y0 - TAB_GAP * i});
@@ -194,14 +153,14 @@ protected:
         }
 
         // close button
-        auto closeBg = shape(24.f, 24.f, 12.f, C_ROW);
+        auto closeBg = shape(24.f, 24.f, 12.f, C_CARD);
         closeBg->setPosition({200.f, 116.f});
         m_root->addChild(closeBg);
         auto closeX = big("X", .34f, C_MUTED);
         closeX->setPosition({200.f, 116.f});
         m_root->addChild(closeX);
 
-        auto ver = chat("Nova v2.1", .5f, C_MUTED);
+        auto ver = chat("Nova v2.2", .5f, C_MUTED);
         ver->setAnchorPoint({1.f, .5f});
         ver->setOpacity(150);
         ver->setPosition({210.f, -127.f});
@@ -239,18 +198,15 @@ protected:
 
     void buildPage(int index, bool animate) {
         if (m_page) m_page->removeFromParentAndCleanup(true);
-        m_rows.clear();
         m_page = CCNode::create();
         m_root->addChild(m_page);
 
-        const TabInfo& tab = TABS[index];
-
-        auto title = big(tab.name, .6f, C_TEXT);
+        auto title = big(TAB_NAMES[index], .6f, C_TEXT);
         title->setAnchorPoint({0.f, .5f});
         title->setPosition({-80.f, 112.f});
         m_page->addChild(title);
 
-        auto sub = chat(tab.sub, .55f, C_MUTED);
+        auto sub = chat(TAB_SUBS[index], .55f, C_MUTED);
         sub->setAnchorPoint({0.f, .5f});
         sub->setPosition({-80.f, 94.f});
         m_page->addChild(sub);
@@ -259,46 +215,31 @@ protected:
         div->setPosition({COL_X, 84.f});
         m_page->addChild(div);
 
-        for (int r = 0; r < 4; ++r) {
-            const RowInfo& info = tab.rows[r];
-            float y = ROW_Y0 - ROW_GAP * r;
+        // empty card
+        auto card = shape(COL_W, 184.f, 13.f, C_CARD);
+        card->setPosition({COL_X, -16.f});
+        m_page->addChild(card);
 
-            auto bg = shape(COL_W, ROW_H, 11.f, C_ROW);
-            bg->setPosition({COL_X, y});
-            m_page->addChild(bg);
+        // ring with the tab's first letter
+        auto ringOuter = shape(46.f, 46.f, 23.f, C_ACCENT, .55f);
+        ringOuter->setPosition({COL_X, 10.f});
+        m_page->addChild(ringOuter);
+        auto ringInner = shape(40.f, 40.f, 20.f, C_BG);
+        ringInner->setPosition({COL_X, 10.f});
+        m_page->addChild(ringInner);
 
-            auto name = big(info.name, .4f, C_TEXT);
-            name->setAnchorPoint({0.f, .5f});
-            name->limitLabelWidth(150.f, .4f, .1f);
-            name->setPosition({-66.f, y + 6.f});
-            m_page->addChild(name);
+        std::string letter(1, TAB_NAMES[index][0]);
+        auto initial = big(letter.c_str(), .6f, C_ACCENT);
+        initial->setPosition({COL_X, 10.f});
+        m_page->addChild(initial);
 
-            auto desc = chat(info.desc, .5f, C_MUTED);
-            desc->setAnchorPoint({0.f, .5f});
-            desc->setPosition({-66.f, y - 8.f});
-            m_page->addChild(desc);
+        auto empty = big("Nothing here yet", .42f, C_TEXT);
+        empty->setPosition({COL_X, -26.f});
+        m_page->addChild(empty);
 
-            bool on = Mod::get()->getSavedValue<bool>(
-                std::string("nova-") + info.key, false);
-
-            auto tg = CCNode::create();
-            tg->setPosition({COL_X + COL_W / 2.f - 33.f, y});
-            auto offT = shape(38.f, 20.f, 10.f, C_OFF);
-            auto onT = shape(38.f, 20.f, 10.f, C_ACCENT);
-            onT->setVisible(on);
-            auto knob = shape(14.f, 14.f, 7.f, C_TEXT);
-            knob->setPosition({on ? 9.f : -9.f, 0.f});
-            tg->addChild(offT);
-            tg->addChild(onT);
-            tg->addChild(knob);
-            m_page->addChild(tg);
-
-            m_rows.push_back({std::string(info.key), onT, knob, y, on});
-        }
-
-        auto hint = chat("More options coming soon", .5f, C_MUTED);
-        hint->setOpacity(130);
-        hint->setPosition({COL_X, -112.f});
+        std::string hintText = std::string(TAB_NAMES[index]) + " options will appear here";
+        auto hint = chat(hintText.c_str(), .55f, C_MUTED);
+        hint->setPosition({COL_X, -45.f});
         m_page->addChild(hint);
 
         if (animate) {
@@ -306,15 +247,6 @@ protected:
             m_page->runAction(CCEaseExponentialOut::create(
                 CCMoveTo::create(.2f, ccp(0.f, 0.f))));
         }
-    }
-
-    void flipRow(ToggleRow& r) {
-        r.on = !r.on;
-        r.onTrack->setVisible(r.on);
-        r.knob->stopAllActions();
-        r.knob->runAction(CCEaseExponentialOut::create(
-            CCMoveTo::create(.18f, ccp(r.on ? 9.f : -9.f, 0.f))));
-        Mod::get()->setSavedValue<bool>("nova-" + r.key, r.on);
     }
 
 public:
@@ -353,7 +285,7 @@ public:
         if (m_closing) return true;
         auto p = m_root->convertToNodeSpace(touch->getLocation());
 
-        if (std::fabs(p.x) > MENU_W / 2.f || std::fabs(p.y) > MENU_H / 2.f) {
+        if (std::fabs(p.x) > MENU_W / 2.f + 4.f || std::fabs(p.y) > MENU_H / 2.f + 4.f) {
             this->onClose(nullptr);
             return true;
         }
@@ -365,15 +297,6 @@ public:
             for (int i = 0; i < TAB_COUNT; ++i) {
                 if (std::fabs(p.y - (TAB_Y0 - TAB_GAP * i)) < TAB_GAP / 2.f) {
                     this->selectTab(i);
-                    break;
-                }
-            }
-            return true;
-        }
-        if (std::fabs(p.x - COL_X) < COL_W / 2.f) {
-            for (auto& row : m_rows) {
-                if (std::fabs(p.y - row.y) < ROW_H / 2.f) {
-                    this->flipRow(row);
                     break;
                 }
             }
@@ -418,7 +341,7 @@ public:
         m_orb->addChild(sh);
         m_orb->addChild(shape(50.f, 50.f, 25.f, C_ACCENT, .45f));
         m_orb->addChild(shape(44.f, 44.f, 22.f, C_BG));
-        m_orb->addChild(shape(38.f, 38.f, 19.f, C_ROW));
+        m_orb->addChild(shape(38.f, 38.f, 19.f, C_CARD));
         m_orb->addChild(big("N", .55f, C_TEXT));
 
         float x = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-x", 30.0));
