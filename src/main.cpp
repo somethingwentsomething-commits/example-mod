@@ -4,21 +4,21 @@
 #include <cmath>
 #include <string>
 #include <vector>
+
 using namespace geode::prelude;
 
 static bool g_novaOpen = false;
 static CCNode* g_novaBubble = nullptr;
 
-static const int NOVA_TABS = 10;
-static const float NOVA_W = 460.f;
-static const float NOVA_H = 280.f;
+static const int NOVA_TABS = 7;
+static const float NOVA_W = 470.f;
+static const float NOVA_H = 290.f;
 static const char* NOVA_TAB_NAMES[NOVA_TABS] = {
-    "Player", "Level", "Visual", "Bypass", "Game",
-    "Speed", "Practice", "Icons", "Labels", "Settings"
+    "Overall", "Player", "Level", "Bypass", "Visual", "Creator", "Settings"
 };
 
-// filled rounded rectangle, centered on (0,0)
-static CCDrawNode* novaRect(float w, float h, float r, int red, int green, int blue) {
+// Enhanced rounded rectangle with smooth draw polygon & optional custom opacity
+static CCDrawNode* novaRect(float w, float h, float r, int red, int green, int blue, float alpha = 1.0f) {
     auto node = CCDrawNode::create();
     float hw = w / 2.f;
     float hh = h / 2.f;
@@ -35,7 +35,7 @@ static CCDrawNode* novaRect(float w, float h, float r, int red, int green, int b
     }
     node->drawPolygon(
         pts.data(), static_cast<unsigned int>(pts.size()),
-        ccc4f(red / 255.f, green / 255.f, blue / 255.f, 1.f),
+        ccc4f(red / 255.f, green / 255.f, blue / 255.f, alpha),
         0.f, ccc4f(0.f, 0.f, 0.f, 0.f)
     );
     return node;
@@ -45,6 +45,7 @@ class NovaMenu : public FLAlertLayer {
 protected:
     CCNode* m_root = nullptr;
     CCNode* m_page = nullptr;
+    CCLayerColor* m_dimOverlay = nullptr;
     std::vector<CCNode*> m_tabNodes;
     std::vector<CCNode*> m_tabBgs;
     std::vector<CCNode*> m_tabBars;
@@ -53,10 +54,14 @@ protected:
     bool m_closing = false;
 
     bool initMenu() {
-        if (!FLAlertLayer::init(150)) return false;
+        if (!FLAlertLayer::init(180)) return false;
         m_noElasticity = true;
         g_novaOpen = true;
-        if (g_novaBubble) g_novaBubble->setVisible(false);
+
+        // Dim background layer with fade-in
+        m_dimOverlay = CCLayerColor::create(ccc4(0, 0, 0, 0));
+        this->addChild(m_dimOverlay, -1);
+        m_dimOverlay->runAction(CCFadeTo::create(0.2f, 160));
 
         m_mainLayer = CCLayer::create();
         this->addChild(m_mainLayer);
@@ -68,33 +73,38 @@ protected:
         m_root->setPosition({win.width / 2.f, win.height / 2.f});
         m_mainLayer->addChild(m_root);
 
-        // panel + border + sidebar
-        m_root->addChild(novaRect(NOVA_W + 3.f, NOVA_H + 3.f, 14.f, 36, 78, 150));
-        m_root->addChild(novaRect(NOVA_W, NOVA_H, 12.f, 20, 22, 32));
-        auto side = novaRect(112.f, NOVA_H - 16.f, 9.f, 13, 14, 21);
+        // Cyberpunk style background layers & side panel
+        m_root->addChild(novaRect(NOVA_W + 6.f, NOVA_H + 6.f, 16.f, 0, 210, 255, 0.25f)); // Outer glow border
+        m_root->addChild(novaRect(NOVA_W + 2.f, NOVA_H + 2.f, 14.f, 30, 42, 70));         // Inner stroke
+        m_root->addChild(novaRect(NOVA_W, NOVA_H, 12.f, 13, 16, 26));                     // Main body
+        
+        auto side = novaRect(118.f, NOVA_H - 16.f, 9.f, 20, 24, 38);
         side->setPosition({-166.f, 0.f});
         m_root->addChild(side);
 
-        // tabs
+        // Tab list setup for 7 tabs
+        float startY = 96.f;
+        float spacingY = 32.f;
+
         for (int i = 0; i < NOVA_TABS; i++) {
             auto node = CCNode::create();
-            node->setPosition({-166.f, 112.5f - 25.f * i});
+            node->setPosition({-166.f, startY - spacingY * i});
             m_root->addChild(node);
 
-            auto bg = novaRect(100.f, 21.f, 5.f, 30, 62, 118);
+            auto bg = novaRect(108.f, 26.f, 6.f, 0, 162, 255, 0.22f);
             bg->setVisible(false);
             node->addChild(bg);
 
-            auto bar = novaRect(3.f, 12.f, 1.5f, 58, 134, 255);
-            bar->setPosition({-43.f, 0.f});
+            auto bar = novaRect(3.5f, 16.f, 1.5f, 0, 230, 255);
+            bar->setPosition({-48.f, 0.f});
             bar->setVisible(false);
             node->addChild(bar);
 
             auto lbl = CCLabelBMFont::create(NOVA_TAB_NAMES[i], "bigFont.fnt");
-            lbl->limitLabelWidth(76.f, 0.4f, 0.1f);
+            lbl->limitLabelWidth(82.f, 0.42f, 0.1f);
             lbl->setAnchorPoint({0.f, 0.5f});
-            lbl->setPosition({-34.f, 0.f});
-            lbl->setColor({140, 146, 170});
+            lbl->setPosition({-38.f, 0.f});
+            lbl->setColor({140, 150, 175});
             node->addChild(lbl);
 
             m_tabNodes.push_back(node);
@@ -103,26 +113,34 @@ protected:
             m_tabLabels.push_back(lbl);
         }
 
-        // close button
-        auto closeBg = novaRect(24.f, 24.f, 7.f, 34, 38, 58);
-        closeBg->setPosition({205.f, 116.f});
+        // Close button (Top-Right)
+        auto closeBg = novaRect(26.f, 26.f, 8.f, 230, 45, 75);
+        closeBg->setPosition({212.f, 120.f});
         m_root->addChild(closeBg);
         auto closeX = CCLabelBMFont::create("X", "bigFont.fnt");
         closeX->setScale(0.42f);
-        closeX->setPosition({205.f, 116.f});
+        closeX->setPosition({212.f, 120.f});
         m_root->addChild(closeX);
 
-        // footer
-        auto foot = CCLabelBMFont::create("Nova Menu  v1.0", "bigFont.fnt");
-        foot->setScale(0.26f);
-        foot->setOpacity(90);
+        // Header brand branding
+        auto brand = CCLabelBMFont::create("NOVA", "bigFont.fnt");
+        brand->setScale(0.48f);
+        brand->setColor({0, 230, 255});
+        brand->setAnchorPoint({0.f, 0.5f});
+        brand->setPosition({-212.f, 120.f});
+        m_root->addChild(brand);
+
+        // Footer
+        auto foot = CCLabelBMFont::create("Nova Menu v2.0", "bigFont.fnt");
+        foot->setScale(0.24f);
+        foot->setOpacity(100);
         foot->setAnchorPoint({1.f, 0.5f});
-        foot->setPosition({214.f, -132.f});
+        foot->setPosition({220.f, -132.f});
         m_root->addChild(foot);
 
-        // open animation
-        m_root->setScale(0.86f);
-        m_root->runAction(CCEaseExponentialOut::create(CCScaleTo::create(0.22f, 1.f)));
+        // Open Scale Pop Animation
+        m_root->setScale(0.5f);
+        m_root->runAction(CCEaseBackOut::create(CCScaleTo::create(0.25f, 1.f)));
 
         int last = Mod::get()->getSavedValue<int>("nova-last-tab", 0);
         selectTab(std::max(0, std::min(NOVA_TABS - 1, last)));
@@ -136,12 +154,12 @@ protected:
             bool on = (k == i);
             m_tabBgs[k]->setVisible(on);
             m_tabBars[k]->setVisible(on);
-            m_tabLabels[k]->setColor(on ? ccColor3B{255, 255, 255} : ccColor3B{140, 146, 170});
+            m_tabLabels[k]->setColor(on ? ccColor3B{255, 255, 255} : ccColor3B{140, 150, 175});
         }
         auto node = m_tabNodes[i];
         node->stopAllActions();
-        node->setScale(0.94f);
-        node->runAction(CCEaseExponentialOut::create(CCScaleTo::create(0.2f, 1.f)));
+        node->setScale(0.9f);
+        node->runAction(CCEaseBackOut::create(CCScaleTo::create(0.2f, 1.f)));
         buildPage(i);
         Mod::get()->setSavedValue<int>("nova-last-tab", i);
     }
@@ -151,40 +169,43 @@ protected:
         m_page = CCNode::create();
         m_root->addChild(m_page);
 
+        // Title text
         auto title = CCLabelBMFont::create(NOVA_TAB_NAMES[i], "bigFont.fnt");
-        title->setScale(0.62f);
+        title->setScale(0.6f);
         title->setAnchorPoint({0.f, 0.5f});
-        title->setPosition({-94.f, 116.f});
+        title->setPosition({-92.f, 120.f});
         m_page->addChild(title);
 
-        auto line = novaRect(308.f, 3.f, 1.5f, 58, 134, 255);
-        line->setPosition({60.f, 100.f});
+        // Title accent divider line
+        auto line = novaRect(310.f, 2.5f, 1.f, 0, 200, 255, 0.8f);
+        line->setPosition({62.f, 102.f});
         m_page->addChild(line);
 
-        auto card = novaRect(324.f, 216.f, 10.f, 26, 29, 43);
-        card->setPosition({60.f, -16.f});
+        // Inner page card container
+        auto card = novaRect(324.f, 218.f, 10.f, 20, 25, 40);
+        card->setPosition({62.f, -16.f});
         m_page->addChild(card);
 
-        auto empty = CCLabelBMFont::create("Nothing here yet", "bigFont.fnt");
-        empty->setScale(0.5f);
-        empty->setOpacity(130);
-        empty->setPosition({60.f, -8.f});
+        // Placeholder content text
+        auto empty = CCLabelBMFont::create("No Cheats Active", "bigFont.fnt");
+        empty->setScale(0.48f);
+        empty->setOpacity(140);
+        empty->setPosition({62.f, -4.f});
         m_page->addChild(empty);
 
-        std::string hintText = std::string(NOVA_TAB_NAMES[i]) + " cheats will show up here";
+        std::string hintText = std::string(NOVA_TAB_NAMES[i]) + " options will appear here";
         auto hint = CCLabelBMFont::create(hintText.c_str(), "bigFont.fnt");
-        hint->setScale(0.3f);
-        hint->setOpacity(80);
-        hint->setPosition({60.f, -30.f});
+        hint->setScale(0.28f);
+        hint->setOpacity(90);
+        hint->setPosition({62.f, -28.f});
         m_page->addChild(hint);
+
+        // Page switch animation
+        m_page->setScale(0.96f);
+        m_page->runAction(CCEaseExponentialOut::create(CCScaleTo::create(0.18f, 1.f)));
     }
 
 public:
-    ~NovaMenu() {
-        g_novaOpen = false;
-        if (g_novaBubble) g_novaBubble->setVisible(true);
-    }
-
     static NovaMenu* create() {
         auto ret = new NovaMenu();
         if (ret && ret->initMenu()) {
@@ -195,13 +216,23 @@ public:
         return nullptr;
     }
 
+    void finishClose() {
+        g_novaOpen = false;
+        this->removeFromParentAndCleanup(true);
+    }
+
     void onClose(CCObject*) {
         if (m_closing) return;
         m_closing = true;
-        g_novaOpen = false;
-        if (g_novaBubble) g_novaBubble->setVisible(true);
         this->setKeypadEnabled(false);
-        this->removeFromParentAndCleanup(true);
+
+        if (m_dimOverlay) {
+            m_dimOverlay->runAction(CCFadeTo::create(0.18f, 0));
+        }
+
+        auto finishCall = CCCallFunc::create(this, callfunc_selector(NovaMenu::finishClose));
+        auto scaleAnim = CCEaseBackIn::create(CCScaleTo::create(0.18f, 0.4f));
+        m_root->runAction(CCSequence::create(scaleAnim, finishCall, nullptr));
     }
 
     void keyBackClicked() override {
@@ -209,18 +240,27 @@ public:
     }
 
     bool ccTouchBegan(CCTouch* t, CCEvent*) override {
+        if (m_closing) return true;
         auto p = m_root->convertToNodeSpace(t->getLocation());
+
+        // Click outside panel to close
         if (std::fabs(p.x) > NOVA_W / 2.f || std::fabs(p.y) > NOVA_H / 2.f) {
             this->onClose(nullptr);
             return true;
         }
-        if (std::fabs(p.x - 205.f) < 15.f && std::fabs(p.y - 116.f) < 15.f) {
+
+        // Close button check
+        if (std::fabs(p.x - 212.f) < 18.f && std::fabs(p.y - 120.f) < 18.f) {
             this->onClose(nullptr);
             return true;
         }
-        if (std::fabs(p.x + 166.f) < 52.f) {
+
+        // Sidebar tab click check
+        if (std::fabs(p.x + 166.f) < 56.f) {
+            float startY = 96.f;
+            float spacingY = 32.f;
             for (int i = 0; i < NOVA_TABS; i++) {
-                if (std::fabs(p.y - (112.5f - 25.f * i)) < 12.5f) {
+                if (std::fabs(p.y - (startY - spacingY * i)) < 15.f) {
                     this->selectTab(i);
                     break;
                 }
@@ -260,33 +300,68 @@ public:
 
         auto win = CCDirector::sharedDirector()->getWinSize();
 
+        // Cooler Multi-layered Orb Bubble
         m_orb = CCNode::create();
-        m_orb->addChild(novaRect(46.f, 46.f, 23.f, 16, 20, 36));
-        m_orb->addChild(novaRect(40.f, 40.f, 20.f, 58, 134, 255));
+        
+        // Outer aura glow & border
+        m_orb->addChild(novaRect(52.f, 52.f, 26.f, 0, 220, 255, 0.25f));
+        m_orb->addChild(novaRect(46.f, 46.f, 23.f, 15, 20, 32, 0.95f));
+        m_orb->addChild(novaRect(38.f, 38.f, 19.f, 0, 150, 255, 0.85f));
+        
         auto lbl = CCLabelBMFont::create("N", "bigFont.fnt");
-        lbl->setScale(0.55f);
+        lbl->setScale(0.58f);
+        lbl->setColor({255, 255, 255});
         m_orb->addChild(lbl);
 
-        float x = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-x", 26.0));
+        float x = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-x", 28.0));
         float y = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-y", win.height / 2.f + 20.f));
-        x = std::max(24.f, std::min(win.width - 24.f, x));
-        y = std::max(24.f, std::min(win.height - 24.f, y));
+        x = std::max(26.f, std::min(win.width - 26.f, x));
+        y = std::max(26.f, std::min(win.height - 26.f, y));
         m_orb->setPosition({x, y});
         this->addChild(m_orb);
 
+        // Breathing idle animation
+        auto pulse = CCRepeatForever::create(
+            CCSequence::create(
+                CCEaseInOut::create(CCScaleTo::create(1.2f, 1.05f), 2.0f),
+                CCEaseInOut::create(CCScaleTo::create(1.2f, 0.96f), 2.0f),
+                nullptr
+            )
+        );
+        m_orb->runAction(pulse);
+
         g_novaBubble = this;
+        this->scheduleUpdate();
         return true;
     }
 
+    // Dynamic Visibility Logic: Hide when playing level, Show when paused/in editor/menus
+    void update(float dt) override {
+        CCLayer::update(dt);
+
+        if (g_novaOpen) {
+            this->setVisible(false);
+            return;
+        }
+
+        auto playLayer = PlayLayer::get();
+        if (playLayer) {
+            // Level is active: show ONLY if paused
+            this->setVisible(playLayer->m_isPaused);
+        } else {
+            // Main menus, LevelEditorLayer, LevelSelect, etc.
+            this->setVisible(true);
+        }
+    }
+
     bool ccTouchBegan(CCTouch* t, CCEvent*) override {
-        if (g_novaOpen) return false;
+        if (!this->isVisible() || g_novaOpen) return false;
         auto p = this->convertToNodeSpace(t->getLocation());
         if (ccpDistance(p, m_orb->getPosition()) > 30.f) return false;
+        
         m_dragging = false;
         m_startTouch = p;
         m_grab = m_orb->getPosition() - p;
-        m_orb->stopAllActions();
-        m_orb->setScale(0.92f);
         return true;
     }
 
@@ -294,30 +369,28 @@ public:
         auto p = this->convertToNodeSpace(t->getLocation());
         if (!m_dragging && ccpDistance(p, m_startTouch) > 8.f) m_dragging = true;
         if (!m_dragging) return;
+        
         auto win = CCDirector::sharedDirector()->getWinSize();
         auto np = p + m_grab;
-        np.x = std::max(24.f, std::min(win.width - 24.f, np.x));
-        np.y = std::max(24.f, std::min(win.height - 24.f, np.y));
+        np.x = std::max(26.f, std::min(win.width - 26.f, np.x));
+        np.y = std::max(26.f, std::min(win.height - 26.f, np.y));
         m_orb->setPosition(np);
     }
 
     void ccTouchEnded(CCTouch*, CCEvent*) override {
-        m_orb->setScale(1.f);
         if (!m_dragging) {
             if (auto menu = NovaMenu::create()) menu->show();
             return;
         }
         auto win = CCDirector::sharedDirector()->getWinSize();
         auto pos = m_orb->getPosition();
-        float tx = pos.x < win.width / 2.f ? 26.f : win.width - 26.f;
+        float tx = pos.x < win.width / 2.f ? 28.f : win.width - 28.f;
         m_orb->runAction(CCEaseExponentialOut::create(CCMoveTo::create(0.25f, ccp(tx, pos.y))));
         Mod::get()->setSavedValue<double>("nova-bubble-x", tx);
         Mod::get()->setSavedValue<double>("nova-bubble-y", pos.y);
     }
 
-    void ccTouchCancelled(CCTouch*, CCEvent*) override {
-        m_orb->setScale(1.f);
-    }
+    void ccTouchCancelled(CCTouch*, CCEvent*) override {}
 };
 
 class $modify(NovaMenuLayer, MenuLayer) {
@@ -326,13 +399,10 @@ class $modify(NovaMenuLayer, MenuLayer) {
         static bool created = false;
         if (!created) {
             created = true;
-            
             auto director = CCDirector::sharedDirector();
             if (!director->getNotificationNode()) {
                 director->setNotificationNode(CCNode::create());
             }
-            
-            // Adds your bubble to the notification node so it persists over all scenes
             director->getNotificationNode()->addChild(NovaBubble::create(), 999);
         }
         return true;
