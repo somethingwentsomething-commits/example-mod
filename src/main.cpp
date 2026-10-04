@@ -1,6 +1,5 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/MenuLayer.hpp>
-#include <Geode/ui/Popup.hpp>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -18,7 +17,7 @@ static const char* NOVA_TAB_NAMES[NOVA_TABS] = {
     "Overall", "Player", "Level", "Bypass", "Visual", "Creator", "Settings"
 };
 
-// Vanilla GD icons guaranteed to be loaded in memory
+// Standard native GD icons
 static const char* NOVA_TAB_ICONS[NOVA_TABS] = {
     "GJ_infoIcon_001.png",       
     "GJ_profileButton_001.png",  
@@ -29,78 +28,104 @@ static const char* NOVA_TAB_ICONS[NOVA_TABS] = {
     "GJ_optionsBtn_001.png"      
 };
 
-// =========================================================
-// NOVA MENU (Using Native Geode Popup for flawless physics)
-// =========================================================
-class NovaMenu : public geode::Popup<> {
+class NovaMenu : public FLAlertLayer {
 protected:
+    CCNode* m_root = nullptr;
     CCNode* m_page = nullptr;
+    CCMenu* m_tabMenu = nullptr;
     std::vector<CCMenuItemSpriteExtra*> m_tabButtons;
     std::vector<CCSprite*> m_tabBgs;
     std::vector<CCLabelBMFont*> m_tabLabels;
     std::vector<CCSprite*> m_tabIcons;
     int m_cur = -1;
+    bool m_closing = false;
 
-    bool setup() override {
-        m_noElasticity = false; // Enable native RobTop elastic bounce
+    bool initMenu() {
+        if (!FLAlertLayer::init(150)) return false;
+        m_noElasticity = true;
         g_novaOpen = true;
-        
-        // Hide default popup title, we will place our own Custom Title
-        this->setTitle("");
-        
-        // --- 1. Background Panels ---
-        // Left sidebar panel (dark brown GD inset)
+
+        this->setTouchEnabled(true);
+        this->setKeypadEnabled(true);
+
+        auto win = CCDirector::sharedDirector()->getWinSize();
+
+        m_root = CCNode::create();
+        m_root->setPosition({win.width / 2.f, win.height / 2.f});
+        m_mainLayer->addChild(m_root);
+
+        // --- 1. Main Background (RobTop Brown Box) ---
+        auto bg = CCScale9Sprite::create("GJ_square01.png");
+        bg->setContentSize({NOVA_W, NOVA_H});
+        m_root->addChild(bg);
+
+        // --- 2. Left Sidebar Panel (RobTop Dark Inset) ---
         auto sideBg = CCScale9Sprite::create("GJ_square02.png");
-        sideBg->setContentSize({110.f, NOVA_H - 20.f});
-        sideBg->setPosition({65.f, NOVA_H / 2.f});
-        m_mainLayer->addChild(sideBg);
+        sideBg->setContentSize({114.f, NOVA_H - 50.f});
+        sideBg->setPosition({-148.f, -12.f});
+        m_root->addChild(sideBg);
 
-        // Main content card panel
+        // --- 3. Content Panel (RobTop Dark Inset) ---
         auto contentBg = CCScale9Sprite::create("GJ_square02.png");
-        contentBg->setContentSize({300.f, NOVA_H - 50.f});
-        contentBg->setPosition({280.f, NOVA_H / 2.f - 15.f});
-        m_mainLayer->addChild(contentBg);
+        contentBg->setContentSize({274.f, NOVA_H - 50.f});
+        contentBg->setPosition({62.f, -12.f});
+        m_root->addChild(contentBg);
 
-        // Custom Title text (RobTop Gold Font) centered over the content area
+        // --- 4. Title Header ---
         auto title = CCLabelBMFont::create("NOVA MENU", "goldFont.fnt");
         title->setScale(0.75f);
-        title->setPosition({280.f, NOVA_H - 25.f});
-        m_mainLayer->addChild(title);
+        title->setPosition({0.f, NOVA_H / 2.f - 22.f});
+        m_root->addChild(title);
 
-        // --- 2. Side Tabs ---
-        auto tabMenu = CCMenu::create();
-        tabMenu->setPosition({0.f, 0.f});
-        m_mainLayer->addChild(tabMenu);
+        // --- 5. Close Button (Top Left Corner) ---
+        auto closeBtnSprite = CCSprite::createWithSpriteFrameName("GJ_closeBtn_001.png");
+        auto closeBtn = CCMenuItemSpriteExtra::create(
+            closeBtnSprite,
+            this,
+            menu_selector(NovaMenu::onClose)
+        );
 
-        float startY = NOVA_H - 35.f;
-        float spacingY = (NOVA_H - 70.f) / (NOVA_TABS - 1); 
+        auto closeMenu = CCMenu::create();
+        closeMenu->setPosition({-NOVA_W / 2.f + 3.f, NOVA_H / 2.f - 3.f});
+        closeMenu->addChild(closeBtn);
+        m_root->addChild(closeMenu);
+
+        // --- 6. Sidebar Tabs ---
+        m_tabMenu = CCMenu::create();
+        m_tabMenu->setPosition({0.f, 0.f});
+        m_root->addChild(m_tabMenu);
+
+        float startY = 78.f;
+        float spacingY = 30.f;
 
         for (int i = 0; i < NOVA_TABS; i++) {
             auto container = CCNode::create();
-            container->setContentSize({100.f, 30.f});
+            container->setContentSize({104.f, 26.f});
 
-            // Tab Background (Using standard CCSprite scaled to prevent pink texture bugs)
+            // Standard CCSprite for button background (Fixes pink texture issue)
             auto sprBg = CCSprite::createWithSpriteFrameName("GJ_button_02.png");
-            sprBg->setScaleX(100.f / sprBg->getContentSize().width);
-            sprBg->setScaleY(30.f / sprBg->getContentSize().height);
-            sprBg->setPosition({50.f, 15.f});
+            sprBg->setScaleX(104.f / sprBg->getContentSize().width);
+            sprBg->setScaleY(26.f / sprBg->getContentSize().height);
+            sprBg->setPosition({52.f, 13.f});
             m_tabBgs.push_back(sprBg);
             container->addChild(sprBg);
 
-            // Tab Icon (Auto-scaled to fit nicely)
+            // Icon
             auto icon = CCSprite::createWithSpriteFrameName(NOVA_TAB_ICONS[i]);
             float maxDim = std::max(icon->getContentSize().width, icon->getContentSize().height);
-            icon->setScale(18.f / maxDim);
-            icon->setPosition({16.f, 15.f});
+            if (maxDim > 0.f) {
+                icon->setScale(16.f / maxDim);
+            }
+            icon->setPosition({15.f, 13.f});
             icon->setColor({200, 200, 200});
             m_tabIcons.push_back(icon);
             container->addChild(icon);
 
-            // Tab Text
+            // Text Label
             auto lbl = CCLabelBMFont::create(NOVA_TAB_NAMES[i], "bigFont.fnt");
-            lbl->limitLabelWidth(60.f, 0.45f, 0.1f);
+            lbl->limitLabelWidth(64.f, 0.42f, 0.1f);
             lbl->setAnchorPoint({0.f, 0.5f});
-            lbl->setPosition({30.f, 16.f});
+            lbl->setPosition({28.f, 14.f});
             lbl->setColor({180, 180, 180});
             m_tabLabels.push_back(lbl);
             container->addChild(lbl);
@@ -111,12 +136,15 @@ protected:
                 menu_selector(NovaMenu::onTabClicked)
             );
             btn->setTag(i);
-            btn->setPosition({65.f, startY - spacingY * i});
-            tabMenu->addChild(btn);
+            btn->setPosition({-148.f, startY - spacingY * i});
+            m_tabMenu->addChild(btn);
             m_tabButtons.push_back(btn);
         }
 
-        // Load last tab
+        // Elastic open animation
+        m_root->setScale(0.4f);
+        m_root->runAction(CCEaseBackOut::create(CCScaleTo::create(0.25f, 1.f)));
+
         int last = Mod::get()->getSavedValue<int>("nova-last-tab", 0);
         selectTab(std::max(0, std::min(NOVA_TABS - 1, last)));
         return true;
@@ -135,10 +163,12 @@ protected:
         auto cache = CCSpriteFrameCache::sharedSpriteFrameCache();
         for (int k = 0; k < NOVA_TABS; k++) {
             bool on = (k == i);
-            
-            // Swap between green (active) and gray (inactive) vanilla frames
             auto frameName = on ? "GJ_button_01.png" : "GJ_button_02.png";
-            m_tabBgs[k]->setDisplayFrame(cache->spriteFrameByName(frameName));
+            if (auto frame = cache->spriteFrameByName(frameName)) {
+                m_tabBgs[k]->setDisplayFrame(frame);
+                m_tabBgs[k]->setScaleX(104.f / frame->getRect().size.width);
+                m_tabBgs[k]->setScaleY(26.f / frame->getRect().size.height);
+            }
 
             m_tabLabels[k]->setColor(on ? ccColor3B{255, 255, 255} : ccColor3B{180, 180, 180});
             m_tabIcons[k]->setColor(on ? ccColor3B{255, 255, 255} : ccColor3B{200, 200, 200});
@@ -151,20 +181,20 @@ protected:
     void buildPage(int i) {
         if (m_page) m_page->removeFromParent();
         m_page = CCNode::create();
-        m_mainLayer->addChild(m_page);
+        m_root->addChild(m_page);
 
         // Section Title
         auto title = CCLabelBMFont::create(NOVA_TAB_NAMES[i], "goldFont.fnt");
         title->setScale(0.6f);
         title->setAnchorPoint({0.f, 0.5f});
-        title->setPosition({145.f, NOVA_H - 52.f});
+        title->setPosition({-62.f, 88.f});
         m_page->addChild(title);
 
-        // Content placeholder
+        // Placeholder content
         auto empty = CCLabelBMFont::create("Nothing Enabled", "bigFont.fnt");
         empty->setScale(0.5f);
         empty->setOpacity(120);
-        empty->setPosition({280.f, NOVA_H / 2.f});
+        empty->setPosition({62.f, -8.f});
         m_page->addChild(empty);
 
         std::string hintText = std::string(NOVA_TAB_NAMES[i]) + " options will appear here";
@@ -172,10 +202,9 @@ protected:
         hint->setScale(0.7f);
         hint->setColor({200, 200, 200});
         hint->setOpacity(160);
-        hint->setPosition({280.f, NOVA_H / 2.f - 24.f});
+        hint->setPosition({62.f, -32.f});
         m_page->addChild(hint);
 
-        // Page transition animation
         m_page->setScale(0.96f);
         m_page->runAction(CCEaseExponentialOut::create(CCScaleTo::create(0.15f, 1.f)));
     }
@@ -183,24 +212,34 @@ protected:
 public:
     static NovaMenu* create() {
         auto ret = new NovaMenu();
-        // initAnchored creates the native RobTop background automatically
-        if (ret && ret->initAnchored(NOVA_W, NOVA_H)) {
+        if (ret && ret->initMenu()) {
             ret->autorelease();
             return ret;
         }
         CC_SAFE_DELETE(ret);
         return nullptr;
     }
-    
-    void onClose(CCObject* sender) override {
+
+    void finishClose() {
         g_novaOpen = false;
-        Popup::onClose(sender); // Handles the closing animation natively
+        this->removeFromParentAndCleanup(true);
+    }
+
+    void onClose(CCObject*) {
+        if (m_closing) return;
+        m_closing = true;
+        this->setKeypadEnabled(false);
+
+        auto finishCall = CCCallFunc::create(this, callfunc_selector(NovaMenu::finishClose));
+        auto scaleAnim = CCEaseBackIn::create(CCScaleTo::create(0.18f, 0.3f));
+        m_root->runAction(CCSequence::create(scaleAnim, finishCall, nullptr));
+    }
+
+    void keyBackClicked() override {
+        this->onClose(nullptr);
     }
 };
 
-// =========================================================
-// NOVA BUBBLE (Free-Floating & Persistent)
-// =========================================================
 class NovaBubble : public CCLayer {
 protected:
     CCNode* m_orb = nullptr;
@@ -227,24 +266,23 @@ public:
 
         auto win = CCDirector::sharedDirector()->getWinSize();
 
-        // Native RobTop Floating Green Button
+        // Native GD Green Floating Button
         m_orb = CCNode::create();
         
         auto btnSpr = CCSprite::createWithSpriteFrameName("GJ_button_01.png"); 
-        btnSpr->setScale(1.1f);
+        btnSpr->setScale(0.95f);
         m_orb->addChild(btnSpr);
 
         auto lbl = CCLabelBMFont::create("N", "goldFont.fnt");
-        lbl->setScale(0.95f);
+        lbl->setScale(0.85f);
         lbl->setPosition({1.f, 2.f}); 
         m_orb->addChild(lbl);
 
-        float x = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-x", 40.0));
+        float x = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-x", 30.0));
         float y = static_cast<float>(Mod::get()->getSavedValue<double>("nova-bubble-y", win.height / 2.f + 20.f));
         
-        // Clamps strictly inside the screen borders so it doesn't get lost
-        x = std::max(30.f, std::min(win.width - 30.f, x));
-        y = std::max(30.f, std::min(win.height - 30.f, y));
+        x = std::max(26.f, std::min(win.width - 26.f, x));
+        y = std::max(26.f, std::min(win.height - 26.f, y));
         m_orb->setPosition({x, y});
         this->addChild(m_orb);
 
@@ -273,12 +311,13 @@ public:
         if (!this->isVisible() || g_novaOpen) return false;
         auto p = this->convertToNodeSpace(t->getLocation());
         
-        if (ccpDistance(p, m_orb->getPosition()) > 30.f) return false;
+        if (ccpDistance(p, m_orb->getPosition()) > 28.f) return false;
 
         m_dragging = false;
         m_startTouch = p;
         m_grab = m_orb->getPosition() - p;
-        m_orb->setScale(0.95f); // Click feedback
+        
+        m_orb->setScale(0.9f);
         return true;
     }
 
@@ -290,9 +329,8 @@ public:
         auto win = CCDirector::sharedDirector()->getWinSize();
         auto np = p + m_grab;
         
-        // Exact Free-Floating (No Snapping) - Clamped to screen bounds
-        np.x = std::max(30.f, std::min(win.width - 30.f, np.x));
-        np.y = std::max(30.f, std::min(win.height - 30.f, np.y));
+        np.x = std::max(26.f, std::min(win.width - 26.f, np.x));
+        np.y = std::max(26.f, std::min(win.height - 26.f, np.y));
         m_orb->setPosition(np);
     }
 
@@ -300,11 +338,12 @@ public:
         m_orb->setScale(1.f);
         
         if (!m_dragging) {
-            if (auto menu = NovaMenu::create()) menu->show();
+            if (auto menu = NovaMenu::create()) {
+                menu->show();
+            }
             return;
         }
         
-        // Saves its exact position precisely where you dropped it
         auto pos = m_orb->getPosition();
         Mod::get()->setSavedValue<double>("nova-bubble-x", pos.x);
         Mod::get()->setSavedValue<double>("nova-bubble-y", pos.y);
@@ -322,10 +361,9 @@ class $modify(NovaMenuLayer, MenuLayer) {
         if (!created) {
             created = true;
             auto director = CCDirector::sharedDirector();
-            if (!director->getNotificationNode()) {
-                director->setNotificationNode(CCNode::create());
+            if (auto notificationNode = director->getNotificationNode()) {
+                notificationNode->addChild(NovaBubble::create(), 999);
             }
-            director->getNotificationNode()->addChild(NovaBubble::create(), 999);
         }
         return true;
     }
