@@ -1,5 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/MenuLayer.hpp>
+#include <Geode/modify/PlayLayer.hpp>
 #include <Geode/binding/PauseLayer.hpp>
 #include <algorithm>
 #include <cmath>
@@ -20,12 +21,18 @@ static constexpr float TAB_Y0 = 70.f;
 static constexpr float TAB_GAP = 30.f;
 static constexpr float COL_X = 65.f;
 static constexpr float COL_W = 290.f;
+static constexpr float ROW_W = 266.f;
+static constexpr float ROW_H = 38.f;
+static constexpr float ROW_Y0 = 50.f;
+static constexpr float ROW_GAP = 46.f;
 
 static const ccColor3B C_BLACK  = {0, 0, 0};
 static const ccColor3B C_BG     = {24, 26, 41};
 static const ccColor3B C_SIDE   = {18, 20, 33};
 static const ccColor3B C_CARD   = {30, 33, 53};
+static const ccColor3B C_ROW    = {42, 46, 74};
 static const ccColor3B C_LINE   = {52, 58, 92};
+static const ccColor3B C_OFF    = {66, 72, 108};
 static const ccColor3B C_TEXT   = {240, 242, 255};
 static const ccColor3B C_MUTED  = {140, 148, 186};
 static const ccColor3B C_ACCENT = {112, 126, 255};
@@ -42,6 +49,13 @@ static const char* TAB_SUBS[TAB_COUNT] = {
     "Make the game look how you like.",
     "Editor helpers.",
     "Tune your Nova menu."
+};
+
+// Real cheats. tab = index into TAB_NAMES. Saved as "nova-<key>".
+struct Cheat { int tab; const char* key; const char* name; const char* desc; };
+static constexpr int CHEAT_COUNT = 1;
+static const Cheat CHEATS[CHEAT_COUNT] = {
+    {1, "noclip", "Noclip", "Survive hazards without dying"},
 };
 
 static CCDrawNode* shape(float w, float h, float radius, ccColor3B color, float alpha = 1.f) {
@@ -83,11 +97,20 @@ static CCLabelBMFont* chat(const char* t, float s, ccColor3B c) {
 
 class NovaMenu : public FLAlertLayer {
 protected:
+    struct ToggleRow {
+        std::string key;
+        CCNode* onTrack;
+        CCNode* knob;
+        float y;
+        bool on;
+    };
+
     CCNode* m_root = nullptr;
     CCNode* m_page = nullptr;
     CCNode* m_pill = nullptr;
     CCLayerColor* m_dim = nullptr;
     std::vector<CCLabelBMFont*> m_tabLabels;
+    std::vector<ToggleRow> m_rows;
     int m_current = -1;
     bool m_closing = false;
 
@@ -111,7 +134,6 @@ protected:
         m_root->setPosition({win.width / 2.f, win.height / 2.f});
         m_mainLayer->addChild(m_root);
 
-        // soft layered shadow
         const float pads[3] = {18.f, 11.f, 5.f};
         for (float p : pads) {
             auto sh = shape(MENU_W + p, MENU_H + p, 22.f, C_BLACK, .12f);
@@ -121,7 +143,6 @@ protected:
         m_root->addChild(shape(MENU_W + 2.f, MENU_H + 2.f, 17.f, C_LINE));
         m_root->addChild(shape(MENU_W, MENU_H, 16.f, C_BG));
 
-        // sidebar card
         auto side = shape(118.f, 256.f, 13.f, C_SIDE);
         side->setPosition({TAB_X, 0.f});
         m_root->addChild(side);
@@ -134,7 +155,6 @@ protected:
         brandLine->setPosition({TAB_X, 91.f});
         m_root->addChild(brandLine);
 
-        // sliding highlight pill (added before labels so labels sit on top)
         m_pill = CCNode::create();
         m_pill->addChild(shape(TAB_W, TAB_H, 9.f, C_ACCENT, .30f));
         auto bar = shape(3.f, 14.f, 1.5f, C_ACCENT);
@@ -152,7 +172,6 @@ protected:
             m_tabLabels.push_back(l);
         }
 
-        // close button
         auto closeBg = shape(24.f, 24.f, 12.f, C_CARD);
         closeBg->setPosition({200.f, 116.f});
         m_root->addChild(closeBg);
@@ -160,7 +179,7 @@ protected:
         closeX->setPosition({200.f, 116.f});
         m_root->addChild(closeX);
 
-        auto ver = chat("Nova v2.2", .5f, C_MUTED);
+        auto ver = chat("Nova v2.3", .5f, C_MUTED);
         ver->setAnchorPoint({1.f, .5f});
         ver->setOpacity(150);
         ver->setPosition({210.f, -127.f});
@@ -198,6 +217,7 @@ protected:
 
     void buildPage(int index, bool animate) {
         if (m_page) m_page->removeFromParentAndCleanup(true);
+        m_rows.clear();
         m_page = CCNode::create();
         m_root->addChild(m_page);
 
@@ -215,38 +235,89 @@ protected:
         div->setPosition({COL_X, 84.f});
         m_page->addChild(div);
 
-        // empty card
         auto card = shape(COL_W, 184.f, 13.f, C_CARD);
         card->setPosition({COL_X, -16.f});
         m_page->addChild(card);
 
-        // ring with the tab's first letter
-        auto ringOuter = shape(46.f, 46.f, 23.f, C_ACCENT, .55f);
-        ringOuter->setPosition({COL_X, 10.f});
-        m_page->addChild(ringOuter);
-        auto ringInner = shape(40.f, 40.f, 20.f, C_BG);
-        ringInner->setPosition({COL_X, 10.f});
-        m_page->addChild(ringInner);
+        int count = 0;
+        for (int c = 0; c < CHEAT_COUNT; ++c) {
+            const Cheat& cheat = CHEATS[c];
+            if (cheat.tab != index) continue;
 
-        std::string letter(1, TAB_NAMES[index][0]);
-        auto initial = big(letter.c_str(), .6f, C_ACCENT);
-        initial->setPosition({COL_X, 10.f});
-        m_page->addChild(initial);
+            float y = ROW_Y0 - ROW_GAP * count;
+            ++count;
 
-        auto empty = big("Nothing here yet", .42f, C_TEXT);
-        empty->setPosition({COL_X, -26.f});
-        m_page->addChild(empty);
+            auto bg = shape(ROW_W, ROW_H, 11.f, C_ROW);
+            bg->setPosition({COL_X, y});
+            m_page->addChild(bg);
 
-        std::string hintText = std::string(TAB_NAMES[index]) + " options will appear here";
-        auto hint = chat(hintText.c_str(), .55f, C_MUTED);
-        hint->setPosition({COL_X, -45.f});
-        m_page->addChild(hint);
+            auto name = big(cheat.name, .42f, C_TEXT);
+            name->setAnchorPoint({0.f, .5f});
+            name->limitLabelWidth(150.f, .42f, .1f);
+            name->setPosition({COL_X - ROW_W / 2.f + 14.f, y + 7.f});
+            m_page->addChild(name);
+
+            auto desc = chat(cheat.desc, .5f, C_MUTED);
+            desc->setAnchorPoint({0.f, .5f});
+            desc->limitLabelWidth(170.f, .5f, .1f);
+            desc->setPosition({COL_X - ROW_W / 2.f + 14.f, y - 8.f});
+            m_page->addChild(desc);
+
+            bool on = Mod::get()->getSavedValue<bool>(
+                std::string("nova-") + cheat.key, false);
+
+            auto tg = CCNode::create();
+            tg->setPosition({COL_X + ROW_W / 2.f - 32.f, y});
+            auto offTrack = shape(38.f, 20.f, 10.f, C_OFF);
+            auto onTrack = shape(38.f, 20.f, 10.f, C_ACCENT);
+            onTrack->setVisible(on);
+            auto knob = shape(14.f, 14.f, 7.f, C_TEXT);
+            knob->setPosition({on ? 9.f : -9.f, 0.f});
+            tg->addChild(offTrack);
+            tg->addChild(onTrack);
+            tg->addChild(knob);
+            m_page->addChild(tg);
+
+            m_rows.push_back({std::string(cheat.key), onTrack, knob, y, on});
+        }
+
+        if (count == 0) {
+            auto ringOuter = shape(46.f, 46.f, 23.f, C_ACCENT, .55f);
+            ringOuter->setPosition({COL_X, 10.f});
+            m_page->addChild(ringOuter);
+            auto ringInner = shape(40.f, 40.f, 20.f, C_BG);
+            ringInner->setPosition({COL_X, 10.f});
+            m_page->addChild(ringInner);
+
+            std::string letter(1, TAB_NAMES[index][0]);
+            auto initial = big(letter.c_str(), .6f, C_ACCENT);
+            initial->setPosition({COL_X, 10.f});
+            m_page->addChild(initial);
+
+            auto empty = big("Nothing here yet", .42f, C_TEXT);
+            empty->setPosition({COL_X, -26.f});
+            m_page->addChild(empty);
+
+            std::string hintText = std::string(TAB_NAMES[index]) + " options will appear here";
+            auto hint = chat(hintText.c_str(), .55f, C_MUTED);
+            hint->setPosition({COL_X, -45.f});
+            m_page->addChild(hint);
+        }
 
         if (animate) {
             m_page->setPosition({14.f, 0.f});
             m_page->runAction(CCEaseExponentialOut::create(
                 CCMoveTo::create(.2f, ccp(0.f, 0.f))));
         }
+    }
+
+    void flipRow(ToggleRow& r) {
+        r.on = !r.on;
+        r.onTrack->setVisible(r.on);
+        r.knob->stopAllActions();
+        r.knob->runAction(CCEaseExponentialOut::create(
+            CCMoveTo::create(.18f, ccp(r.on ? 9.f : -9.f, 0.f))));
+        Mod::get()->setSavedValue<bool>("nova-" + r.key, r.on);
     }
 
 public:
@@ -297,6 +368,15 @@ public:
             for (int i = 0; i < TAB_COUNT; ++i) {
                 if (std::fabs(p.y - (TAB_Y0 - TAB_GAP * i)) < TAB_GAP / 2.f) {
                     this->selectTab(i);
+                    break;
+                }
+            }
+            return true;
+        }
+        if (std::fabs(p.x - COL_X) < ROW_W / 2.f) {
+            for (auto& row : m_rows) {
+                if (std::fabs(p.y - row.y) < ROW_H / 2.f) {
+                    this->flipRow(row);
                     break;
                 }
             }
@@ -423,5 +503,13 @@ class $modify(NovaMenuLayer, MenuLayer) {
             holder->addChild(bubble, 999);
         }
         return true;
+    }
+};
+
+// Noclip: when the game tries to kill the player, skip it.
+class $modify(NovaPlayLayer, PlayLayer) {
+    void destroyPlayer(PlayerObject* player, GameObject* obj) {
+        if (Mod::get()->getSavedValue<bool>("nova-noclip", false)) return;
+        PlayLayer::destroyPlayer(player, obj);
     }
 };
